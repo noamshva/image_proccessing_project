@@ -73,6 +73,7 @@ def sample_color_from_video(video_path, max_samples=3, color_name="Color"):
             paused = True
             cv2.setMouseCallback(window_name, click_handler)
             print(f"Paused for {color_name} calibration. Click on the ball to sample its color.")
+            #print("the ball tocuh the screeen:",hit_wall)
         elif key == ord('q'):
             print("Exiting calibration for", color_name)
             break

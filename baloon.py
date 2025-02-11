@@ -245,7 +245,7 @@ class Game:
             running = self.handle_events()
             self.update()
             self.draw()
-            clock.tick(FPS)
+            clock.tick(FPS-10)  # Slightly faster than normal FPS to speed up game
 
 if __name__ == "__main__":
     game = Game()
