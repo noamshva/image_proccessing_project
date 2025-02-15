@@ -134,31 +134,20 @@ class BallTracker:
         #   [ [lower_bound values], [upper_bound values] ]
         if color_ranges:
             if isinstance(color_ranges, dict):
-                # Try to use the first calibrated sample for each color.
-                blue_samples = color_ranges.get("blue", [])
-                yellow_samples = color_ranges.get("yellow", [])
-                if blue_samples and yellow_samples:
-                    self.lower_blue = np.array(blue_samples[0][0], dtype=np.uint8)
-                    self.upper_blue = np.array(blue_samples[0][1], dtype=np.uint8)
-                    self.lower_yellow = np.array(yellow_samples[0][0], dtype=np.uint8)
-                    self.upper_yellow = np.array(yellow_samples[0][1], dtype=np.uint8)
-                else:
-                    # Fallback defaults if one of the colors wasn't calibrated.
-                    self.lower_blue = np.array([90, 80, 80])
-                    self.upper_blue = np.array([130, 255, 255])
-                    self.lower_yellow = np.array([20, 100, 100])
-                    self.upper_yellow = np.array([30, 255, 255])
+                self.blue_samples = color_ranges.get("blue", [])
+                self.yellow_samples = color_ranges.get("yellow", [])
             else:
-                # If color_ranges is not a dictionary, assume it is a list with two tuples:
-                #   [ (lower_blue, upper_blue), (lower_yellow, upper_yellow) ]
-                self.lower_blue, self.upper_blue = color_ranges[0]
-                self.lower_yellow, self.upper_yellow = color_ranges[1]
+                # If color_ranges is a list, assume [ (blue_samples), (yellow_samples) ]
+                self.blue_samples, self.yellow_samples = color_ranges[0], color_ranges[1]
         else:
-            # Default color ranges if no calibration data is provided.
-            self.lower_blue = np.array([90, 80, 80])
-            self.upper_blue = np.array([130, 255, 255])
-            self.lower_yellow = np.array([20, 100, 100])
-            self.upper_yellow = np.array([30, 255, 255])
+            # Default samples if no calibration data is provided.
+            self.blue_samples = [
+                ([90, 80, 80], [130, 255, 255])
+            ]
+            self.yellow_samples = [
+                ([20, 100, 100], [30, 255, 255])
+            ]
+
         
         # Initialize score
         self.blue_score = 0
@@ -445,11 +434,22 @@ class BallTracker:
         
 
 
-    def detect_object(self, frame, lower_color, upper_color):
+    def detect_object(self, frame, color_samples):
         """Detect colored object in frame"""
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, lower_color, upper_color)
-        
+
+        # Combine masks from all color samples
+        mask = None
+        for i, sample in enumerate(color_samples):
+            lower_bound = np.array(sample[0], dtype=np.uint8)
+            upper_bound = np.array(sample[1], dtype=np.uint8)
+            temp_mask = cv2.inRange(hsv, lower_bound, upper_bound)
+            
+            if mask is None:
+                mask = temp_mask
+            else:
+                mask = cv2.bitwise_or(mask, temp_mask)
+
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
@@ -460,6 +460,7 @@ class BallTracker:
             area = cv2.contourArea(c)
             if area > 100:
                 (x, y), radius = cv2.minEnclosingCircle(c)
+                print(radius)
                 return (int(x), int(y)), int(radius)
         return None, None
 
@@ -470,8 +471,8 @@ class BallTracker:
         # Get frame dimensions
         frame_height, frame_width = frame.shape[:2]
         # Detect balls using calibrated colors.
-        blue_ball, blue_radius = self.detect_object(frame, self.lower_blue, self.upper_blue)
-        yellow_ball, yellow_radius = self.detect_object(frame, self.lower_yellow, self.upper_yellow)
+        blue_ball, blue_radius = self.detect_object(frame, self.blue_samples)
+        yellow_ball, yellow_radius = self.detect_object(frame, self.yellow_samples)
         # Detect the screen
         screen_top_left, screen_bottom_right = self.detect_screen(frame)
         if screen_top_left and screen_bottom_right:

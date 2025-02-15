@@ -74,7 +74,7 @@ class CombinedGame:
                 pygame.display.flip()
 
                 cv2.imshow('Ball Tracking', processed_frame)
-                print(f"Frame processed at time {current_time}")
+                # print(f"Frame processed at time {current_time}")
 
             key = cv2.waitKey(1) & 0xFF  # OpenCV Key Handling
             if key == ord('q'):  # Ensure 'q' quits both OpenCV and the game
@@ -93,8 +93,8 @@ class CombinedGame:
 def main():
     video_path = "ball_video.mp4"  # enter the video path
     run_on_video = True  # Change to False to use the real-time camera.
-    use_saved_calibration = False  # Change to False to force new calibration samples.
-
+    use_saved_calibration = True  # Change to False to force new calibration samples.
+    
     try:
         if use_saved_calibration:
             try:
@@ -103,10 +103,10 @@ def main():
                 print("Loaded calibration data from YAML.")
             except Exception as e:
                 print("Failed to load calibration data, proceeding with new sampling.")
-                color_ranges = calibrate_colors(video_path, max_samples=3)
+                color_ranges = calibrate_colors(video_path, max_samples=10)
         else:
             # Calibrate (sample) colors for both Blue and Yellow.
-            color_ranges = calibrate_colors(video_path, max_samples=3)
+            color_ranges = calibrate_colors(video_path, max_samples=10)
         
         if run_on_video:
             print("Running on video...")
