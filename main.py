@@ -49,7 +49,7 @@ class CombinedGame:
             if not self.paused:  # Only read frames when not paused
                 ret, frame = self.tracker.cap.read()
                 if not ret:
-                    print("End of video or error reading frame.")
+                    print("End of video or error readqing frame.")
                     break
 
             current_time = time.time()
@@ -94,8 +94,9 @@ class CombinedGame:
 def main():
     video_path = "ball_video.mp4"  # enter the video path
     run_on_video = True  # Change to False to use the real-time camera.
-    use_saved_calibration = True  # Change to False to force new calibration samples.
     show_live_ball_radius = True  # Plot live ball radius found for both balls (just for debugging)
+    use_saved_calibration = True  # Change to False to force new calibration samples.
+    num_color_samples = 5
     try:
         if use_saved_calibration:
             try:
@@ -104,10 +105,10 @@ def main():
                 print("Loaded calibration data from YAML.")
             except Exception as e:
                 print("Failed to load calibration data, proceeding with new sampling.")
-                color_ranges = calibrate_colors(video_path, max_samples=10)
+                color_ranges = calibrate_colors(video_path, max_samples=num_color_samples)
         else:
             # Calibrate (sample) colors for both Blue and Yellow.
-            color_ranges = calibrate_colors(video_path, max_samples=10)
+            color_ranges = calibrate_colors(video_path, max_samples=num_color_samples)
         
         if run_on_video:
             print("Running on video...")

@@ -123,8 +123,8 @@ class BallTracker:
         cv2.namedWindow('Ball Tracking')
         
          # Configurable parameters with trackbars
-        cv2.createTrackbar('Min Ball Size', 'Parameters', 5, 100, lambda x: None)
-        cv2.createTrackbar('Max Ball Size', 'Parameters', 25, 100, lambda x: None)
+        cv2.createTrackbar('Min Ball Size', 'Parameters', 10, 100, lambda x: None)
+        cv2.createTrackbar('Max Ball Size', 'Parameters', 40, 100, lambda x: None)
         cv2.createTrackbar('Size Change Threshold', 'Parameters', 15, 100, lambda x: None)
         
         # Initialize Kalman filters for each color
@@ -443,7 +443,7 @@ class BallTracker:
         
 
 
-    def detect_object(self, frame, color_samples, screen_top_left=None, screen_bottom_right=None):
+    def detect_object(self, frame, color_samples, screen_top_left=None, screen_bottom_right=None, params=None):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         mask = None
@@ -470,10 +470,19 @@ class BallTracker:
         if contours:
             c = max(contours, key=cv2.contourArea)
             area = cv2.contourArea(c)
-            if area > 100:
+            if area > 200:
                 (x, y), radius = cv2.minEnclosingCircle(c)
-                print(radius)
-                return (int(x), int(y)), int(radius)
+                
+                # Check params and apply default values if needed
+                min_size = 0
+                max_size = 100
+                if params and params.get('min_size', 0) > 0 and params.get('max_size', 0) > 0:
+                    min_size = params['min_size']
+                    max_size = params['max_size']
+                
+                # Check radius condition
+                if min_size <= radius <= max_size:
+                    return (int(x), int(y)), int(radius)
         return None, None
 
 
@@ -492,8 +501,8 @@ class BallTracker:
         
         
         # Detect balls using calibrated colors.
-        blue_ball, blue_radius = self.detect_object(frame, self.blue_samples, screen_top_left, screen_bottom_right)
-        yellow_ball, yellow_radius = self.detect_object(frame, self.yellow_samples, screen_top_left, screen_bottom_right)
+        blue_ball, blue_radius = self.detect_object(frame, self.blue_samples, screen_top_left, screen_bottom_right, params)
+        yellow_ball, yellow_radius = self.detect_object(frame, self.yellow_samples, screen_top_left, screen_bottom_right, params)
 
         # Update trackers with Kalman predictions
         blue_result = self.track_ball_movement(
