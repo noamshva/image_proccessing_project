@@ -3,6 +3,12 @@ import numpy as np
 from pathlib import Path
 import time
 from collections import deque
+
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import collections
+
+
 class KalmanFilter:
     def __init__(self):
         # State: [x, y, vx, vy, ax, ay, r, vr]
@@ -148,7 +154,9 @@ class BallTracker:
                 ([20, 100, 100], [30, 255, 255])
             ]
 
-        
+        self.blue_radius_history = collections.deque(maxlen=100)  # Store last 100 radius samples
+        self.yellow_radius_history = collections.deque(maxlen=100)
+
         # Initialize score
         self.blue_score = 0
         self.yellow_score = 0
@@ -192,6 +200,7 @@ class BallTracker:
         }
         
         self.running = True
+
 
     def get_parameters(self):
         """Get current parameters from trackbars"""
@@ -434,13 +443,11 @@ class BallTracker:
         
 
 
-    def detect_object(self, frame, color_samples):
-        """Detect colored object in frame"""
+    def detect_object(self, frame, color_samples, screen_top_left=None, screen_bottom_right=None):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        # Combine masks from all color samples
         mask = None
-        for i, sample in enumerate(color_samples):
+        for sample in color_samples:
             lower_bound = np.array(sample[0], dtype=np.uint8)
             upper_bound = np.array(sample[1], dtype=np.uint8)
             temp_mask = cv2.inRange(hsv, lower_bound, upper_bound)
@@ -450,10 +457,15 @@ class BallTracker:
             else:
                 mask = cv2.bitwise_or(mask, temp_mask)
 
+        if screen_top_left and screen_bottom_right:
+            screen_mask = np.zeros_like(mask)
+            cv2.rectangle(screen_mask, screen_top_left, screen_bottom_right, 255, -1)
+            mask = cv2.bitwise_and(mask, screen_mask)
+
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        
+
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if contours:
             c = max(contours, key=cv2.contourArea)
@@ -464,21 +476,25 @@ class BallTracker:
                 return (int(x), int(y)), int(radius)
         return None, None
 
+
     def process_frame(self, frame, timestamp):
         """Process a single frame"""
         # Get current parameters
         params = self.get_parameters()
         # Get frame dimensions
         frame_height, frame_width = frame.shape[:2]
-        # Detect balls using calibrated colors.
-        blue_ball, blue_radius = self.detect_object(frame, self.blue_samples)
-        yellow_ball, yellow_radius = self.detect_object(frame, self.yellow_samples)
-        # Detect the screen
+
+                # Detect the screen
         screen_top_left, screen_bottom_right = self.detect_screen(frame)
         if screen_top_left and screen_bottom_right:
         # Draw the detected screen (white rectangle) on the frame
             cv2.rectangle(frame, screen_top_left, screen_bottom_right, (0, 255, 0), 2)  # Green rectangle
         
+        
+        # Detect balls using calibrated colors.
+        blue_ball, blue_radius = self.detect_object(frame, self.blue_samples, screen_top_left, screen_bottom_right)
+        yellow_ball, yellow_radius = self.detect_object(frame, self.yellow_samples, screen_top_left, screen_bottom_right)
+
         # Update trackers with Kalman predictions
         blue_result = self.track_ball_movement(
         blue_ball, blue_radius, self.blue_tracker, self.blue_kalman, timestamp, params, frame, self.blue_tracker['direction'])
@@ -543,6 +559,12 @@ class BallTracker:
                 cv2.putText(frame, "YELLOW BALL HIT!", 
                            (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
         
+        if blue_ball and blue_radius:
+            self.blue_radius_history.append(blue_radius)
+        if yellow_ball and yellow_radius:
+            self.yellow_radius_history.append(yellow_radius)
+
+
         # # Draw trajectories
         # if len(self.blue_trajectory) > 1:
         #     pts = np.array(list(self.blue_trajectory), np.int32)
@@ -555,9 +577,27 @@ class BallTracker:
         #     cv2.polylines(frame, [pts], False, (0, 255, 255), 2)
         return frame
 
+    def plot_radius_live(self):
+        plt.ion()
+        fig, ax = plt.subplots()
+        ax.set_title("Ball Radius Over Time")
+        ax.set_xlabel("Samples")
+        ax.set_ylabel("Radius")
+        
+        line_blue, = ax.plot([], [], label='Blue Ball Radius', color='blue')
+        line_yellow, = ax.plot([], [], label='Yellow Ball Radius', color='yellow')
+        ax.legend()
+
+        while self.running:
+            line_blue.set_data(range(len(self.blue_radius_history)), list(self.blue_radius_history))
+            line_yellow.set_data(range(len(self.yellow_radius_history)), list(self.yellow_radius_history))
+            ax.relim()
+            ax.autoscale_view()
+            plt.draw()
+            plt.pause(0.1)
+
     def run(self):
         start_time = time.time()
-        
         while self.running:
             ret, frame = self.cap.read()
             if not ret:

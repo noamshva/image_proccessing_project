@@ -3,6 +3,7 @@ import numpy as np
 import pygame
 import os
 import time
+import threading
 from live_ball_tracker import BallTracker
 from baloon import Game, BALLOON_SIZE, WIDTH, HEIGHT, RED, GREEN
 # Import calibration functions from our module.
@@ -94,7 +95,7 @@ def main():
     video_path = "ball_video.mp4"  # enter the video path
     run_on_video = True  # Change to False to use the real-time camera.
     use_saved_calibration = True  # Change to False to force new calibration samples.
-    
+    show_live_ball_radius = True  # Plot live ball radius found for both balls (just for debugging)
     try:
         if use_saved_calibration:
             try:
@@ -114,6 +115,10 @@ def main():
         else:
             print("Running on real-time camera...")
             game = CombinedGame(color_ranges=color_ranges)
+
+        if show_live_ball_radius:
+            threading.Thread(target=game.tracker.plot_radius_live, daemon=True).start()
+
         game.run()
     except Exception as e:
         print(f"Error: {e}")
