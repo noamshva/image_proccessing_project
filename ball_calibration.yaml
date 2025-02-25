@@ -1,0 +1,12 @@
+blue:
+  bottom_left: 20
+  bottom_right: 18
+  center: 17
+  top_left: 21
+  top_right: 20
+yellow:
+  bottom_left: 22
+  bottom_right: 21
+  center: 21
+  top_left: 23
+  top_right: 21
