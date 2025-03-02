@@ -63,7 +63,7 @@ def Kalman_update(KalmanFilter,center,radius):
 def IsBallIsBack(predicted,last_vx,last_vy):
     current_vx = predicted[3][0]  
     current_vy = predicted[4][0]  
-    IsChange= (current_vy*last_vy<-400)
+    IsChange= (current_vy*last_vy<0)
     last_vx=current_vx
     last_vy=current_vy
     return IsChange,last_vx,last_vy

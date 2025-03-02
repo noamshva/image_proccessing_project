@@ -278,11 +278,11 @@ def camera_processing(game_instance, event_queue):
         last_vx_blue,last_vy_blue=update_event_queue(event_queue,blue_center,blue_radius,frame_number,frame_display,"BLUE",M,blue_kalman,last_vx_blue,last_vy_blue)
         last_vx_yellow,last_vy_yellow=update_event_queue(event_queue,yellow_center,yellow_radius,frame_number,frame_display,"YELLOW",M,Yellow_kalman,last_vx_yellow,last_vy_yellow)
 
-        red_balloons = detect_red_balloon(frame)
-        Handle_ballons(red_balloons,frame_display,"RED")
+        # red_balloons = detect_red_balloon(frame)
+        # Handle_ballons(red_balloons,frame_display,"RED")
         
-        green_balloons = detect_green_balloon(frame)
-        Handle_ballons(green_balloons,frame_display,"GREEN")
+        # green_balloons = detect_green_balloon(frame)
+        # Handle_ballons(green_balloons,frame_display,"GREEN")
 
 
         # Show original frame with overlays

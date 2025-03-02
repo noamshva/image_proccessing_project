@@ -84,7 +84,7 @@ def load_color_calibration(calib_file="calibration.yaml"):
         }
     return calib_data
 
-def detect_ball(frame, lower_bound, upper_bound, min_size=5, max_size=100):
+def detect_object(frame, lower_bound, upper_bound, min_size=5, max_size=100):
     """
     Detects a ball in the given frame based on the provided lower and upper HSV bounds.
     Returns the ball's center and radius if found, otherwise (None, None).
@@ -151,7 +151,7 @@ def main():
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
                 # Try detecting the ball in the frame using the specified HSV thresholds
-                ball_center, ball_radius = detect_ball(frame, lower_bound, upper_bound)
+                ball_center, ball_radius = detect_object(frame, lower_bound, upper_bound)
                 if ball_center is not None:
                     # Draw detected ball on display frame
                     cv2.circle(display_frame, ball_center, ball_radius, (255, 0, 0), 2)

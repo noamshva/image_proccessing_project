@@ -378,7 +378,7 @@ class Game:
         
         print(f"is back {IsBack}")
         # check if the detected ball radius is expected and the ball is back from the wall
-        if (abs(detected_radius - calibrated_radius) > RADIUS_TOLERANCE) and (IsBack):
+        if (abs(detected_radius - calibrated_radius) > RADIUS_TOLERANCE) or (IsBack):
             print(f"is back {IsBack}")
             
             return
