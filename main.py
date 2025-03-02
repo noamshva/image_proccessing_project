@@ -9,22 +9,24 @@ from queue import Queue
 
 from game import Game, WIDTH, HEIGHT, RED, GREEN, SCREEN_COORDS
 from video_recorder import VideoRecorder
+from Kalman_filter import kalman_filter,Kalman_update,IsBallIsBack
 
 
-
-
-
-    
 
 
 def detect_ball(frame, color_samples, screen_top_left=None, screen_bottom_right=None, params=None):
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    """
+    Detect a ball in an image using color-based filtering in the HSV color space.
+    The function applies color masking, morphological operations, and contour detection to locate the ball and determine its position and radius.
+    """
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)        
+    hsv = cv2.GaussianBlur(hsv, (5, 5), 0)
 
     mask = None
     for sample in color_samples:
         lower_bound = np.array(sample[0], dtype=np.uint8)
         upper_bound = np.array(sample[1], dtype=np.uint8)
-        temp_mask = cv2.inRange(hsv, lower_bound, upper_bound)
+        temp_mask   = cv2.inRange(hsv, lower_bound, upper_bound)
         
         if mask is None:
             mask = temp_mask
@@ -37,8 +39,8 @@ def detect_ball(frame, color_samples, screen_top_left=None, screen_bottom_right=
         mask = cv2.bitwise_and(mask, screen_mask)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
+    mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if contours:
@@ -85,17 +87,15 @@ def capture_thread_func(cap, stop_event):
             latest_frame = frame.copy()
     print("Capture thread ending.")
 
-def order_points(pts):
-    rect = np.zeros((4, 2), dtype="float32")
-    s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
-    diff = np.diff(pts, axis=1)
-    rect[1] = pts[np.argmin(diff)]
-    rect[3] = pts[np.argmax(diff)]
-    return rect
+
 
 def get_projector_screen_transform(frame, width, height):
+    """
+    calculates a perspective transformation matrix that will allow the screen identified 
+    in the image to be mapped to a rectangular area of ​fixed size (width, height).
+    we get the coordinate from calibration projector.
+    
+    """
     # Draw screen contour in blue to avoid interference with green detection
     screen_points = SCREEN_COORDS.astype(np.int32)
     cv2.polylines(frame, [screen_points], True, (255, 0, 0), 2)
@@ -126,13 +126,19 @@ def detect_red_balloon(frame):
     return red_balloons
 
 def detect_green_balloon(frame):
+    """
+    same idea like th red balloon
+    """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lower_green = np.array([40, 50, 50])
     upper_green = np.array([80, 255, 255])
+
     mask = cv2.inRange(hsv, lower_green, upper_green)
+
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     green_balloons = []
     for cnt in contours:
@@ -141,10 +147,75 @@ def detect_green_balloon(frame):
             green_balloons.append(((int(x), int(y)), float(radius)))
     return green_balloons
 
+
+
+def Handle_ballons(ballons,frame_display,color):
+    """
+    this function draw a circle on the baloon its help for debug
+    
+    """
+    for center, radius in ballons:
+    # Draw in original space
+        if color == "RED":
+            cv2.circle(frame_display, center, int(radius), (0, 0, 255), 2)
+            cv2.putText(frame_display, "Red Balloon", (center[0] + 10, center[1]),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        else:
+            cv2.circle(frame_display, center, int(radius), (0, 255, 0), 2)
+            cv2.putText(frame_display, "Green Balloon", (center[0] + 10, center[1]),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+
+def update_event_queue(event_queue,center,radius,frame_num,frame_display,ball_color,M,Kalman,last_vx,last_vy):
+    """
+    Draw a circle on the ball and update event queue each frame to detect a hit
+    """
+    if ball_color=="BLUE":    
+        if center is not None and radius is not None:
+
+            predicted                  =  Kalman_update(Kalman,center,radius)
+            IsBack,last_vx,last_vy     =  IsBallIsBack(predicted,last_vx,last_vy)
+            predicted_center           =  (int(predicted[0]), int(predicted[1]))
+
+            cv2.circle(frame_display, predicted_center, int(predicted[2]), (255, 0, 0), 2)         # We will draw a circle around the blue ball to verify identification          
+            cv2.putText(frame_display, "Blue Ball", (predicted_center[0] + 10, predicted_center[1]), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+            src_pt = np.array([[[predicted_center[0], predicted_center[1]]]], dtype=np.float32)
+            center_warped = cv2.perspectiveTransform(src_pt, M)[0][0]                   # get the prespective of the ball 3D->2D
+            event_queue.put(("blue", int(center_warped[0]), int(center_warped[1]), int(predicted[2]),frame_number,IsBack))
+        return last_vx,last_vy
+    else:      
+        if center is not None and radius is not None:
+            predicted                  =  Kalman_update(Kalman,center,radius)
+            IsBack,last_vx,last_vy     =  IsBallIsBack(predicted,last_vx,last_vy)
+            predicted_center           =  (int(predicted[0]), int(predicted[1]))
+
+            cv2.circle(frame_display, predicted_center, int(predicted[2]), (0, 255, 255), 2)
+            cv2.putText(frame_display, "Yellow Ball", (predicted_center[0] + 10, predicted_center[1]), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            src_pt = np.array([[[predicted_center[0], predicted_center[1]]]], dtype=np.float32)
+            center_warped = cv2.perspectiveTransform(src_pt, M)[0][0]
+            event_queue.put(("yellow", int(center_warped[0]), int(center_warped[1]), int(radius),frame_number,IsBack))
+        return last_vx,last_vy
+    return
+
+
+
+Yellow_kalman   =  kalman_filter()
+blue_kalman     =  kalman_filter()
+
+
+
 def camera_processing(game_instance, event_queue):
+    """
+    This function we connect to the relevanr camera, detect th balloons and the balls and show the video in real time. 
+    """
     global latest_frame
+    global frame_number   
+
     cap = None
-    for i in range(1,5):
+
+    for i in range(1,5):            # find the camera
         cap_candidate = cv2.VideoCapture(i)
         if cap_candidate.isOpened():
             cap = cap_candidate
@@ -154,7 +225,7 @@ def camera_processing(game_instance, event_queue):
         print("Could not open camera")
         return
 
-    cam_fps = cap.get(cv2.CAP_PROP_FPS)
+    cam_fps = cap.get(cv2.CAP_PROP_FPS)    #find the FPS 
     if cam_fps <= 0 or cam_fps is None:
         cam_fps = 30
     print(f"Reported camera FPS: {cam_fps}")
@@ -168,16 +239,23 @@ def camera_processing(game_instance, event_queue):
     print("Camera window is open. Starting processing...")
 
     effective_frame_count = 0
-    fps_timer = time.time()
-    effective_fps = 0
+    fps_timer             = time.time()
+    effective_fps         = 0
+
+    frame_number = 0        # helps us to followinf the frame
 
     recording_enabled = False
     contour_recording_enabled = False
     video_recorder = None
     video_recorder_contour = None
+    last_vx_yellow = 1  # מהירות נוכחית בציר X
+    last_vy_yellow = 1
+    last_vx_blue = 1
+    last_vy_blue = 1
 
     while True:
         effective_frame_count += 1
+        frame_number += 1 
         current_time = time.time()
         if current_time - fps_timer >= 1.0:
             effective_fps = effective_frame_count / (current_time - fps_timer)
@@ -193,47 +271,24 @@ def camera_processing(game_instance, event_queue):
         # Get transform matrix and draw screen contour
         M = get_projector_screen_transform(frame_display, WIDTH, HEIGHT)
 
-        # Detect in original frame space
-        blue_center, blue_radius = detect_ball(frame, calibration_data["blue"], params={"min_size": 5, "max_size": 50})
+        # Detect the radius and caenter of the ball in original frame space 
+        blue_center, blue_radius     = detect_ball(frame, calibration_data["blue"], params={"min_size": 5, "max_size": 50})
         yellow_center, yellow_radius = detect_ball(frame, calibration_data["yellow"], params={"min_size": 5, "max_size": 50})
 
-        # For blue ball detection:
-        if blue_center is not None and blue_radius is not None:
-            cv2.circle(frame_display, blue_center, int(blue_radius), (255, 0, 0), 2)
-            cv2.putText(frame_display, "Blue Ball", (blue_center[0] + 10, blue_center[1]), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
-            src_pt = np.array([[[blue_center[0], blue_center[1]]]], dtype=np.float32)
-            blue_center_warped = cv2.perspectiveTransform(src_pt, M)[0][0]
-            event_queue.put(("blue", int(blue_center_warped[0]), int(blue_center_warped[1]), int(blue_radius)))
-
-        # For yellow ball detection:
-        if yellow_center is not None and yellow_radius is not None:
-            cv2.circle(frame_display, yellow_center, int(yellow_radius), (0, 255, 255), 2)
-            cv2.putText(frame_display, "Yellow Ball", (yellow_center[0] + 10, yellow_center[1]), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-            src_pt = np.array([[[yellow_center[0], yellow_center[1]]]], dtype=np.float32)
-            yellow_center_warped = cv2.perspectiveTransform(src_pt, M)[0][0]
-            event_queue.put(("yellow", int(yellow_center_warped[0]), int(yellow_center_warped[1]), int(yellow_radius)))
-
+        last_vx_blue,last_vy_blue=update_event_queue(event_queue,blue_center,blue_radius,frame_number,frame_display,"BLUE",M,blue_kalman,last_vx_blue,last_vy_blue)
+        last_vx_yellow,last_vy_yellow=update_event_queue(event_queue,yellow_center,yellow_radius,frame_number,frame_display,"YELLOW",M,Yellow_kalman,last_vx_yellow,last_vy_yellow)
 
         red_balloons = detect_red_balloon(frame)
-        for red_center, red_radius in red_balloons:
-            # Draw in original space
-            cv2.circle(frame_display, red_center, int(red_radius), (0, 0, 255), 2)
-            cv2.putText(frame_display, "Red Balloon", (red_center[0] + 10, red_center[1]),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-
+        Handle_ballons(red_balloons,frame_display,"RED")
+        
         green_balloons = detect_green_balloon(frame)
-        for green_center, green_radius in green_balloons:
-            # Draw in original space
-            cv2.circle(frame_display, green_center, int(green_radius), (0, 255, 0), 2)
-            cv2.putText(frame_display, "Green Balloon", (green_center[0] + 10, green_center[1]),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        Handle_ballons(green_balloons,frame_display,"GREEN")
+
 
         # Show original frame with overlays
         cv2.imshow("Camera", frame_display)
 
-        # Handle recording
+        # Handle recording video if you dont have camera
         if recording_enabled and video_recorder is not None:
             video_recorder.record_frame(frame.copy())
         if contour_recording_enabled and video_recorder_contour is not None:
@@ -264,7 +319,7 @@ def camera_processing(game_instance, event_queue):
                     video_recorder_contour.stop()
                     video_recorder_contour = None
                 print("Contour recording stopped.")
-
+       
     stop_event.set()
     cap_thread.join()
     cap.release()
@@ -278,7 +333,7 @@ def camera_processing(game_instance, event_queue):
 
 
 def start_game_and_camera():
-    event_queue = Queue()
+    event_queue = Queue()       # Queue of all the frames' we wiil use it to detect hit 
     game_instance = Game()
     game_instance.event_queue = event_queue
     cam_thread = threading.Thread(target=camera_processing, args=(game_instance, event_queue))
